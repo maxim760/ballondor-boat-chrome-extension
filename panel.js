@@ -101,6 +101,8 @@
       .rank{color:#b7a477;font-size:12px;font-variant-numeric:tabular-nums}
       .name{font-weight:600;overflow-wrap:anywhere}.year{display:block;color:#aaa69e;font-size:12px}
       .votes{font-weight:650;text-align:right;font-variant-numeric:tabular-nums;color:#edcf8b}
+      .percent{margin-left:8px;font-size:12px;font-weight:400;color:#aaa69e}
+      .votes{white-space:nowrap}
       .votes small{display:block;font-weight:400;font-size:10px;color:#aaa69e}
       footer{margin-top:12px;color:#aaa69e;font-size:11px}
       [hidden]{display:none!important}
@@ -130,7 +132,7 @@
     status.setAttribute("role", "status");
     const list = element("ol");
     body.append(select, status, list, element("footer",
-      "Обновляется при ответе сайта. Для нового запроса перезагрузи страницу."));
+      "Для загрузки голосов нужно авторизоваться на сайте. Обновляется при ответе сайта. Для нового запроса перезагрузи страницу."));
     panel.append(header, body);
     shadow.append(style, panel);
     document.body.append(host);
@@ -159,10 +161,11 @@
     }
     if (!poll) {
       ui.badge.textContent = "Ожидание";
-      ui.status.textContent = "Жду ответ polls… Если список не появляется, перезагрузи страницу после установки расширения.";
+      ui.status.textContent = "Жду ответ polls… Авторизуйся на сайте. Если список не появляется, перезагрузи страницу после установки расширения.";
       return;
     }
     const ranked = voteRanking.getTopVotes(poll.options);
+    const totalVotes = poll.options.reduce((sum, item) => sum + Number(item.votes), 0);
     ui.badge.textContent = `${ranked.length} вариантов`;
     ui.status.textContent = `${ranked.length} вариантов · ${new Date(poll.time).toLocaleTimeString("ru-RU")}`;
     if (!ranked.length) ui.status.textContent += " · Массив options пуст.";
@@ -172,6 +175,8 @@
       const name = element("div", item.title, "name");
       name.append(element("span", voteRanking.getYear(item.description), "year"));
       const votes = element("div", format.format(item.votes), "votes");
+      const percent = totalVotes ? Math.round(Number(item.votes) / totalVotes * 100) : 0;
+      votes.append(element("span", `${percent}%`, "percent"));
       votes.append(element("small", "голосов"));
       row.append(element("span", `#${idx + 1}`, "rank"), name, votes);
       fragment.append(row);

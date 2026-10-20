@@ -206,6 +206,18 @@ const drain = () => new Promise(resolve => setTimeout(resolve, 30));
   const list = nodes.find(item => item.tag === "ol");
   assert.equal(list.children[0].children.length, 1, "Retain the loaded option");
   assert.equal(nodes.find(item => item.tag === "summary").focused, true);
+  const percentages = () => list.children[0].children.map(row =>
+    row.children[2].children[0].textContent);
+  assert.deepEqual(percentages(), ["100%"]);
+  const deliverVotes = votes => pageMessage({
+    source: pageWindow, origin: "https://ballondor.com",
+    data: { ...env.messages[0].message,
+      options: votes.map(votes => ({ ...payload.data.options[0], votes })) }
+  });
+  deliverVotes(["70", "30"]);
+  assert.deepEqual(percentages(), ["70%", "30%"]);
+  deliverVotes([0, 0]);
+  assert.deepEqual(percentages(), ["0%", "0%"]);
   chrome.tabs.sendMessage = async () => { throw new Error("No receiver"); };
   popupClosed = false;
   await openButton.handlers.click();

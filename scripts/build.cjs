@@ -6,7 +6,7 @@ const { Script } = require("node:vm");
 const root = path.resolve(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 const scripts = [...new Set(manifest.content_scripts.flatMap(entry => entry.js))];
-const files = ["manifest.json", ...scripts, manifest.background.service_worker];
+const files = ["manifest.json", ...scripts, manifest.action.default_popup, "popup.js", "popup.css"];
 for (const file of files) {
   if (path.basename(file) !== file) throw new Error(`Unsupported package path: ${file}`);
   const source = fs.readFileSync(path.join(root, file), "utf8");

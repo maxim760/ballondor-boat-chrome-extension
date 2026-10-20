@@ -1,14 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Ballon d'Or — Votes",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Показывает рейтинг из ответов polls на ballondor.com.",
   "minimum_chrome_version": "111",
   "action": {
-    "default_title": "Открыть панель Ballon d’Or"
-  },
-  "background": {
-    "service_worker": "background.js"
+    "default_title": "Ballon d’Or — Голоса",
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {

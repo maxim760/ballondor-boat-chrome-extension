@@ -1,6 +1,6 @@
 {
   "name": "ballondor2026",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Ballon d'Or votes Chrome extension",
   "engines": { "node": ">=20" },

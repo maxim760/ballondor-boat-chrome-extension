@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const base = path.resolve(process.argv[2] || path.join(__dirname, ".."));
 const manifest = JSON.parse(fs.readFileSync(path.join(base, "manifest.json")));
-for (const script of [...manifest.content_scripts.flatMap(entry => entry.js), manifest.background.service_worker]) {
+for (const script of [...manifest.content_scripts.flatMap(entry => entry.js), "popup.js"]) {
   new vm.Script(fs.readFileSync(path.join(base, script), "utf8"), { filename: script });
 }
 const source = fs.readFileSync(path.join(base, "interceptor.js"), "utf8");
@@ -160,21 +160,20 @@ const drain = () => new Promise(resolve => setTimeout(resolve, 30));
     nodes.push(result);
     return result;
   }
-  let pageMessage, extensionMessage, iconClick;
+  let pageMessage, extensionMessage;
+  let popupClosed = false;
+  const openButton = node("button");
+  const popupStatus = node("p");
   const body = node("body");
   const pageWindow = { addEventListener(type, callback) { pageMessage = callback; } };
-  const titles = [];
   const chrome = {
     runtime: { onMessage: { addListener(callback) { extensionMessage = callback; } } },
-    action: {
-      onClicked: { addListener(callback) { iconClick = callback; } },
-      async setTitle(value) { titles.push(value); }
-    },
-    tabs: { async sendMessage(tabId, message) {
+    tabs: { async query() { return [{ id: 7 }]; }, async sendMessage(tabId, message) {
       assert.equal(tabId, 7);
       let response;
       extensionMessage(message, {}, value => { response = value; });
       assert.equal(response.opened, true);
+      return response;
     } }
   };
   const uiContext = vm.createContext({
@@ -185,16 +184,22 @@ const drain = () => new Promise(resolve => setTimeout(resolve, 30));
     voteRanking: { getTopVotes: options => options.map(item => ["", item]), getYear: () => "2023" }
   });
   vm.runInContext(fs.readFileSync(path.join(base, "panel.js"), "utf8"), uiContext);
-  vm.runInContext(fs.readFileSync(path.join(base, "background.js"), "utf8"), uiContext);
+  const popupContext = vm.createContext({
+    chrome, window: { close() { popupClosed = true; } },
+    document: { getElementById(id) { return id === "open-panel" ? openButton : popupStatus; } }
+  });
+  vm.runInContext(fs.readFileSync(path.join(base, "popup.js"), "utf8"), popupContext);
   const host = body.children[0];
   const details = nodes.find(item => item.tag === "details");
-  const close = nodes.find(item => item.tag === "button");
+  const close = nodes.find(item => item.className === "close");
   assert.equal(details.open, false);
   close.handlers.click({ preventDefault() {}, stopPropagation() {} });
   assert.equal(host.style.display, "none");
   pageMessage({ source: pageWindow, origin: "https://ballondor.com", data: env.messages[0].message });
   assert.equal(host.style.display, "none", "API updates must not reopen a closed panel");
-  await iconClick({ id: 7 });
+  assert.equal(popupClosed, false);
+  await openButton.handlers.click();
+  assert.equal(popupClosed, true);
   assert.equal(host.style.display, "block");
   assert.equal(details.open, true);
   assert.equal(body.children.length, 1, "Reopen the existing panel");
@@ -202,7 +207,11 @@ const drain = () => new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(list.children[0].children.length, 1, "Retain the loaded option");
   assert.equal(nodes.find(item => item.tag === "summary").focused, true);
   chrome.tabs.sendMessage = async () => { throw new Error("No receiver"); };
-  await iconClick({ id: 8 });
-  assert.match(titles.at(-1).title, /ballondor.com\/vote/);
+  popupClosed = false;
+  await openButton.handlers.click();
+  assert.equal(popupClosed, false);
+  assert.equal(popupStatus.hidden, false);
+  assert.equal(openButton.disabled, false);
+  assert.match(popupStatus.textContent, /ballondor.com\/vote/);
   console.log("PASS: fetch/XHR; /votes excluded; response preservation; errors; options validation; close/reopen through toolbar; retained data.");
 })().catch(error => { console.error(error); process.exitCode = 1; });

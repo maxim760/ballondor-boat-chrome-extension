@@ -76,8 +76,9 @@
       summary{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;
         gap:12px;cursor:pointer;list-style:none;user-select:none}
       summary::-webkit-details-marker{display:none}
-      .chevron{color:#e9cb84}
-      details[open] .chevron{transform:rotate(180deg)}
+      .chevron{width:8px;height:8px;flex-shrink:0;border-right:1.5px solid #e9cb84;
+        border-bottom:1.5px solid #e9cb84;transform:rotate(45deg);margin-top:-4px}
+      details[open] .chevron{transform:rotate(225deg);margin-top:4px}
       .close{font:20px/1 system-ui;color:#aaa69e;background:transparent;
         border:0;border-radius:5px;cursor:pointer;padding:2px 5px}
       .close:hover{background:#ffffff18;color:#fff}
@@ -119,7 +120,7 @@
       event.stopPropagation();
       host.style.display = "none";
     });
-    const chevron = element("span", "⌄", "chevron");
+    const chevron = element("span", undefined, "chevron");
     chevron.setAttribute("aria-hidden", "true");
     header.append(element("span", "Ballon d’Or · Голоса", "title"), badge, chevron, close);
     const select = element("select");

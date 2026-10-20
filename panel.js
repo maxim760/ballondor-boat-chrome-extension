@@ -58,10 +58,10 @@
     render();
   }
 
-  function mount() {
+  function mount(force = false) {
     if (ui || !document.body) return;
     // Keep listening on all routes so client-side navigation to /vote works too.
-    if (!lastError && !polls.size && !/(?:^|\/)vote(?:\/|$)/.test(location.pathname)) return;
+    if (!force && !lastError && !polls.size && !/(?:^|\/)vote(?:\/|$)/.test(location.pathname)) return;
     const host = element("div");
     host.id = "ballondor-votes-extension";
     host.style.cssText = "all:initial;position:fixed;right:16px;top:16px;z-index:2147483647";
@@ -76,8 +76,12 @@
       summary{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;
         gap:12px;cursor:pointer;list-style:none;user-select:none}
       summary::-webkit-details-marker{display:none}
-      summary:after{content:"⌄";color:#e9cb84}
-      details[open]>summary:after{content:"⌃"}
+      .chevron{color:#e9cb84}
+      details[open] .chevron{transform:rotate(180deg)}
+      .close{font:20px/1 system-ui;color:#aaa69e;background:transparent;
+        border:0;border-radius:5px;cursor:pointer;padding:2px 5px}
+      .close:hover{background:#ffffff18;color:#fff}
+      .close:focus-visible{outline:2px solid #e9cb84}
       .title{font-weight:600;font-size:13px;color:#e9cb84}
       .badge{font-size:11px;color:#aaa69e}
       .error{color:#ffaaa5!important}
@@ -106,7 +110,18 @@
     const badge = element("span", "Ожидание", "badge");
     badge.setAttribute("role", "status");
     const body = element("div", undefined, "body");
-    header.append(element("span", "Ballon d’Or · Голоса", "title"), badge);
+    const close = element("button", "×", "close");
+    close.type = "button";
+    close.title = "Закрыть панель";
+    close.setAttribute("aria-label", "Закрыть панель");
+    close.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      host.style.display = "none";
+    });
+    const chevron = element("span", "⌄", "chevron");
+    chevron.setAttribute("aria-hidden", "true");
+    header.append(element("span", "Ballon d’Or · Голоса", "title"), badge, chevron, close);
     const select = element("select");
     select.setAttribute("aria-label", "Опрос");
     select.addEventListener("change", guarded(() => { selected = select.value; lastError = ""; render(); }));
@@ -118,7 +133,7 @@
     panel.append(header, body);
     shadow.append(style, panel);
     document.body.append(host);
-    ui = { select, status, list, badge };
+    ui = { host, panel, header, select, status, list, badge };
   }
 
   function render() {
@@ -165,6 +180,16 @@
 
   try {
     window.addEventListener("message", guarded(onMessage));
+    chrome.runtime.onMessage.addListener(guarded((message, sender, sendResponse) => {
+      if (message.type !== "OPEN_VOTES_PANEL") return;
+      mount(true);
+      if (!ui) throw new Error("Страница ещё загружается. Попробуй открыть панель ещё раз.");
+      ui.host.style.display = "block";
+      ui.panel.open = true;
+      render();
+      ui.header.focus();
+      sendResponse({ opened: true });
+    }));
     const initialize = guarded(() => { mount(); render(); });
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", initialize, { once: true });

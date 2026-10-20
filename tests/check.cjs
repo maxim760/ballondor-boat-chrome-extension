@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const base = path.resolve(process.argv[2] || path.join(__dirname, ".."));
 const manifest = JSON.parse(fs.readFileSync(path.join(base, "manifest.json")));
-for (const script of manifest.content_scripts.flatMap(entry => entry.js)) {
+for (const script of [...manifest.content_scripts.flatMap(entry => entry.js), manifest.background.service_worker]) {
   new vm.Script(fs.readFileSync(path.join(base, script), "utf8"), { filename: script });
 }
 const source = fs.readFileSync(path.join(base, "interceptor.js"), "utf8");
@@ -49,13 +49,25 @@ const drain = () => new Promise(resolve => setTimeout(resolve, 30));
     "https://example.com/polls/123",
     "http://voting.fansunitedapi.com/polls/123",
     "https://voting.fansunitedapi.com/users?polls=1",
-    "https://voting.fansunitedapi.com/notpolls"
+    "https://voting.fansunitedapi.com/notpolls",
+    "https://voting.fansunitedapi.com/v1/polls/123/votes",
+    "https://voting.fansunitedapi.com/v1/polls/123/votes/count"
   ]) {
     const ignored = setup();
     await ignored.window.fetch(url);
     await drain();
     assert.equal(ignored.messages.length, 0, url);
   }
+  const ignoredVotes = setup(new Response("denied", { status: 403 }));
+  await ignoredVotes.window.fetch(endpoint.replace("?key=test", "/votes"));
+  const voteXhr = new ignoredVotes.XHR();
+  voteXhr.open("POST", endpoint.replace("?key=test", "/votes"));
+  voteXhr.status = 403;
+  voteXhr.responseText = "invalid JSON";
+  voteXhr.send();
+  voteXhr.dispatchEvent(new Event("loadend"));
+  await drain();
+  assert.equal(ignoredVotes.messages.length, 0);
 
   for (const response of [
     new Response("oops"),
@@ -110,6 +122,7 @@ const drain = () => new Promise(resolve => setTimeout(resolve, 30));
     window: panelWindow,
     location: { origin: "https://ballondor.com", pathname: "/vote" },
     document: { body: null, readyState: "loading", addEventListener() {} },
+    chrome: { runtime: { onMessage: { addListener() {} } } },
     console: { error(label, error) { errors.push(error.message); } }
   });
   vm.runInContext(fs.readFileSync(path.join(base, "panel.js"), "utf8"), panelContext);
@@ -131,5 +144,65 @@ const drain = () => new Promise(resolve => setTimeout(resolve, 30));
   deliver({ ...env.messages[0].message, options: [] });
   deliver({ channel: "other" });
   assert.equal(errors.length, 0);
-  console.log("PASS: fetch/XHR; URL filtering; response preservation; errors; unmodified options; receiver array validation.");
+  // Exercise closing, background-to-content messaging and retained poll data.
+  const nodes = [];
+  function node(tag) {
+    const result = {
+      tag, children: [], style: {}, handlers: {}, open: false,
+      classList: { add() {}, remove() {} },
+      append(...children) { this.children.push(...children); },
+      replaceChildren(...children) { this.children = children; },
+      setAttribute() {},
+      addEventListener(type, callback) { this.handlers[type] = callback; },
+      attachShadow() { return node("shadow"); },
+      focus() { this.focused = true; }
+    };
+    nodes.push(result);
+    return result;
+  }
+  let pageMessage, extensionMessage, iconClick;
+  const body = node("body");
+  const pageWindow = { addEventListener(type, callback) { pageMessage = callback; } };
+  const titles = [];
+  const chrome = {
+    runtime: { onMessage: { addListener(callback) { extensionMessage = callback; } } },
+    action: {
+      onClicked: { addListener(callback) { iconClick = callback; } },
+      async setTitle(value) { titles.push(value); }
+    },
+    tabs: { async sendMessage(tabId, message) {
+      assert.equal(tabId, 7);
+      let response;
+      extensionMessage(message, {}, value => { response = value; });
+      assert.equal(response.opened, true);
+    } }
+  };
+  const uiContext = vm.createContext({
+    chrome, window: pageWindow, console,
+    location: { origin: "https://ballondor.com", pathname: "/vote" },
+    document: { body, readyState: "complete", createElement: node,
+      createDocumentFragment: () => node("fragment") },
+    voteRanking: { getTopVotes: options => options.map(item => ["", item]), getYear: () => "2023" }
+  });
+  vm.runInContext(fs.readFileSync(path.join(base, "panel.js"), "utf8"), uiContext);
+  vm.runInContext(fs.readFileSync(path.join(base, "background.js"), "utf8"), uiContext);
+  const host = body.children[0];
+  const details = nodes.find(item => item.tag === "details");
+  const close = nodes.find(item => item.tag === "button");
+  assert.equal(details.open, false);
+  close.handlers.click({ preventDefault() {}, stopPropagation() {} });
+  assert.equal(host.style.display, "none");
+  pageMessage({ source: pageWindow, origin: "https://ballondor.com", data: env.messages[0].message });
+  assert.equal(host.style.display, "none", "API updates must not reopen a closed panel");
+  await iconClick({ id: 7 });
+  assert.equal(host.style.display, "block");
+  assert.equal(details.open, true);
+  assert.equal(body.children.length, 1, "Reopen the existing panel");
+  const list = nodes.find(item => item.tag === "ol");
+  assert.equal(list.children[0].children.length, 1, "Retain the loaded option");
+  assert.equal(nodes.find(item => item.tag === "summary").focused, true);
+  chrome.tabs.sendMessage = async () => { throw new Error("No receiver"); };
+  await iconClick({ id: 8 });
+  assert.match(titles.at(-1).title, /ballondor.com\/vote/);
+  console.log("PASS: fetch/XHR; /votes excluded; response preservation; errors; options validation; close/reopen through toolbar; retained data.");
 })().catch(error => { console.error(error); process.exitCode = 1; });

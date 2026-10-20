@@ -19,7 +19,8 @@
       const url = new URL(raw, location.href);
       return url.protocol === "https:" &&
         url.hostname === "voting.fansunitedapi.com" &&
-        /\/polls(?:\/|$)/.test(url.pathname);
+        /\/polls(?:\/|$)/.test(url.pathname) &&
+        !url.pathname.includes("/votes");
     } catch {
       return false;
     }

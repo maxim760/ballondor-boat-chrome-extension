@@ -20,7 +20,7 @@ const staging = fs.mkdtempSync(path.join(dist, ".build-"));
 try {
   for (const file of files) fs.copyFileSync(path.join(root, file), path.join(staging, file));
   // macOS includes zip. Explicit files exclude tests, README, .DS_Store and build tools.
-  const archive = `ballondro2026-${manifest.version}.zip`;
+  const archive = `ballondor2026-${manifest.version}.zip`;
   try {
     execFileSync("zip", ["-q", "-X", path.join(staging, archive), ...files], {
       cwd: staging, stdio: "pipe"
